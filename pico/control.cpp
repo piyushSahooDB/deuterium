@@ -281,8 +281,14 @@ void control::stbUpdate() {
 
 void control::navUpdate(float nav_dt) {
 
-    float HL = computePID(pid_x, state.dx, nav_dt) + computePID(pid_yaw, state.dyaw, nav_dt);
-    float HR = computePID(pid_x, state.dx, nav_dt) - computePID(pid_yaw, state.dyaw, nav_dt);
+    float x = computePID(pid_x, state.dx, nav_dt);
+    float yaw = computePID(pid_yaw, state.dyaw, nav_dt);
+
+    float HL = x + yaw;
+    float HR = x - yaw;
+
+    HL = constrain(HL, F_MIN, F_MAX);
+    HR = constrain(HR, F_MIN, F_MAX);
 
     throttle.HL = thrustToDshot(HL);
     throttle.HR = thrustToDshot(HR);
