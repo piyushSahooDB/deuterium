@@ -39,7 +39,6 @@ int main(void) {
 
     stdio_init_all();
 
-#if DEBUG_MODE
     sleep_ms(1000);
     gpio_init(4);
     gpio_set_dir(4, true);
@@ -50,6 +49,8 @@ int main(void) {
         dummy = !dummy;
     }
     sleep_ms(1000);
+
+#if DEBUG_MODE
     printf("program initiating\n");
 #endif
 
@@ -98,7 +99,7 @@ int main(void) {
             float nav_dt = absolute_time_diff_us(last_nav_data_time, new_nav_data_time) / 1000000.0f;
             last_nav_data_time = new_nav_data_time;
             nav_time_out = false;
-            control::navUpdate(0.001);          //change the dt here, its supposed to be nav_dt but not working maybe because too fast or, nav_ft becomes 0 becuase number too small ig
+            control::navUpdate(0.05);          //change the dt here, its supposed to be nav_dt but not working maybe because too fast or, nav_ft becomes 0 becuase number too small ig
         }
         if (!nav_time_out && absolute_time_diff_us(last_nav_data_time, get_absolute_time()) > NAV_TIME_OUT_US) {
             control::navStop();
