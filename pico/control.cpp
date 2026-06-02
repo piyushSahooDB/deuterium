@@ -284,8 +284,8 @@ void control::navUpdate(float nav_dt) {
     float HL = computePID(pid_x, state.dx, nav_dt) + computePID(pid_yaw, state.dyaw, nav_dt);
     float HR = computePID(pid_x, state.dx, nav_dt) - computePID(pid_yaw, state.dyaw, nav_dt);
 
-    throttle.HL = thrustToDshot(throttle.HL);
-    throttle.HR = thrustToDshot(throttle.HR);
+    throttle.HL = thrustToDshot(HL);
+    throttle.HR = thrustToDshot(HR);
 
 }
 
