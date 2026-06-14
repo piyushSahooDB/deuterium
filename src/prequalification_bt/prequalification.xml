@@ -28,11 +28,8 @@ NOTE: If you change this file, you MUST RESTART the Behavior Tree node to reload
             <DriveThruGate/>
 
             <!-- 3. POLE MISSION -->
-            <Fallback name="find_pole">
-                <IsObjectSeen object="POLE"/>
-                <Exploration target_object="POLE" grace_duration="15.0"/>
-                
-            </Fallback>
+        
+            <Exploration target_object="POLE" grace_duration="15.0"/>
             
             <!-- NOTE: Change 'threshold' here to set the radius of the orbit approach -->
             <ApproachObject object="POLE" threshold="1.0"/>
@@ -41,12 +38,13 @@ NOTE: If you change this file, you MUST RESTART the Behavior Tree node to reload
                  Surge duration X is orbit_surge_duration in mission_params.yaml. -->
             <OrbitPole object="POLE" staystill="3.0"/>
             
+            <Exploration target_object="GATE" grace_duration="15.0"/>
             <!-- 4. RETURN HOME (Reactive) -->
-            <Fallback name="find_gate_home">
+            <!-- <Fallback name="find_gate_home">
                 <IsObjectSeen object="GATE"/>
                 <Exploration target_object="GATE" grace_duration="15.0"/>
                 <Do360Turn success_when_seen="GATE"/>
-            </Fallback>
+            </Fallback> -->
 
             <!-- NOTE: Approach home gate to threshold -->
             <ApproachObject object="GATE" threshold="1.0"/>

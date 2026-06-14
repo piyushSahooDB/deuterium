@@ -312,6 +312,8 @@ BT::NodeStatus Exploration::onStart() {
     auto obj = getInput<std::string>("target_object");
     if (!obj) throw BT::RuntimeError("Exploration: missing required port [target_object]");
     target_object_ = obj.value();
+
+    //float locked_yaw = ctx->getCurrentYaw();
  
  
     grace_duration_ = getInput<double>("grace_duration").value_or(15.0);
