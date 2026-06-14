@@ -277,6 +277,47 @@ private:
   std::chrono::steady_clock::time_point stay_still_start_;
 };
 
+
+class Exploration : public BT::StatefulActionNode {
+public:
+  Exploration(const std::string &name, const BT::NodeConfig &config)
+      : BT::StatefulActionNode(name, config) {}
+
+  static BT::PortsList providedPorts() {
+    return {
+        BT::InputPort<std::string>("target_object",
+                                   "Object to search for while surging: POLE or GATE"),
+        BT::InputPort<double>("grace_duration", 15.0,
+                              "Seconds to keep surging after the first non-target "
+                              "detection before returning FAILURE"),
+    };
+  }
+
+  BT::NodeStatus onStart() override;
+  BT::NodeStatus onRunning() override;
+  void onHalted() override;
+
+private:
+  enum class Phase { SURGING, GRACE };
+  Phase phase_ = Phase::SURGING;
+
+  std::string target_object_;  // "POLE" or "GATE" — read from port in onStart
+  double grace_duration_ = 15.0;
+  std::optional<std::chrono::steady_clock::time_point> grace_start_;
+
+  double graceElapsedSeconds() const {
+    if (!grace_start_) return 0.0;
+    using fsec = std::chrono::duration<double>;
+    return std::chrono::duration_cast<fsec>(
+               std::chrono::steady_clock::now() - *grace_start_)
+        .count();
+  }
+};
+ 
+
+
+
+
 /**
  * @brief Registration helper for the Behavior Tree factory.
  */
@@ -288,4 +329,5 @@ inline void registerAllNodes(BT::BehaviorTreeFactory &factory) {
   factory.registerNodeType<DriveThruGate>("DriveThruGate");
   factory.registerNodeType<ApproachObject>("ApproachObject");
   factory.registerNodeType<OrbitPole>("OrbitPole");
+  factory.registerNodeType<Exploration>("Exploration");
 }

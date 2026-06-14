@@ -304,6 +304,148 @@ BT::NodeStatus DriveThruGate::onRunning() {
 
 void DriveThruGate::onHalted() { getCtx(config())->stopMotion(); }
 
+
+//Exploration Node
+
+
+BT::NodeStatus Exploration::onStart() {
+    auto obj = getInput<std::string>("target_object");
+    if (!obj) throw BT::RuntimeError("Exploration: missing required port [target_object]");
+    target_object_ = obj.value();
+ 
+ 
+    grace_duration_ = getInput<double>("grace_duration").value_or(15.0);
+    phase_          = Phase::SURGING;
+    grace_start_    = std::nullopt;
+ 
+    auto ctx = getCtx(config());
+
+
+    RCLCPP_INFO(
+        ctx->node->get_logger(),
+        "[Exploration] Starting — target='%s', surging forward, grace=%.1f s.",
+        target_object_.c_str(), grace_duration_
+    );
+ 
+    ctx->publishToPico(0.0f, ctx->base_surge_speed, (float)ctx->target_depth, 0);
+    
+    return BT::NodeStatus::RUNNING;
+}
+
+BT::NodeStatus Exploration::onRunning(){
+
+    auto ctx =getCtx(config());
+    rclcpp::spin_some(ctx->node);
+    ctx->publishToPico(0.0f, ctx->base_surge_speed, (float)ctx->target_depth, 0);
+
+
+    auto targetClassId = [&](const std::string &obj) -> std::string {
+        if (obj == "POLE") return "preq_pole";
+        else if (obj == "GATE") return "preq_gate";
+        else return "";
+    };
+
+
+    auto confThresh = [&](const std::string &obj) -> float {
+        if (obj == "POLE") return ctx->pole_conf_thresh;
+        if (obj == "GATE") return ctx->gate_conf_thresh;
+        return 1.0f; 
+    };
+
+    const std::string target_class = targetClassId(target_object_);
+    const float target_conf  = confThresh(target_object_);
+
+    bool objectSeen =false;
+    bool targetSeen=false;
+    std::string seen_class;
+
+    {
+        std::lock_guard<std::mutex> g(ctx->mtx);   // lock ctx's mutex
+        if (ctx->latest_detections) {
+            for (const auto &det : ctx->latest_detections->detections) {
+                // ... read det.results[0].hypothesis.class_id, .score
+                if(det.results.empty())
+                    continue;
+                
+                const auto &hyp=det.results[0].hypothesis;
+                const auto &id=hyp.class_id;
+                const auto &score=hyp.score;
+
+                if(id==target_class && score>=target_conf){
+                    targetSeen=true;
+                    break;
+                }
+                
+                else{
+                    if(!objectSeen){
+                        if (id == "preq_pole" && score >= ctx->pole_conf_thresh) {
+                            objectSeen = true;
+                            seen_class = id;
+                        } 
+                        else if (id == "preq_gate" && score >= ctx->gate_conf_thresh) {
+                            objectSeen = true;
+                            seen_class = id;
+                        }
+                    }
+                }
+        
+            }
+        }
+    }
+
+    if(targetSeen){
+
+        RCLCPP_INFO(
+            ctx->node->get_logger(),
+            "[Exploration] Target '%s' detected — SUCCESS.",
+            target_object_.c_str()
+        );
+
+        return BT::NodeStatus::SUCCESS;
+    }
+
+    else if(objectSeen && !targetSeen && phase_==Phase::SURGING){
+
+        phase_=Phase::GRACE;
+        grace_start_ = std::chrono::steady_clock::now();
+
+
+        RCLCPP_INFO(
+            ctx->node->get_logger(),
+            "[Exploration] Non-target object ('%s') detected. Grace timer started (%.1f s).",
+            seen_class.c_str(), grace_duration_
+        );
+
+
+
+    }
+
+    if (phase_ == Phase::GRACE) {
+    double elapsed = graceElapsedSeconds();
+
+    if (elapsed >= grace_duration_) {
+        RCLCPP_WARN(
+            ctx->node->get_logger(),
+            "[Exploration] Grace period expired (%.1f s) without seeing '%s' — FAILURE.",
+            grace_duration_, target_object_.c_str()
+        );
+        ctx->stopMotion();
+        return BT::NodeStatus::FAILURE;
+    }
+}
+
+    return BT::NodeStatus::RUNNING;
+}
+
+void  Exploration::onHalted(){
+    getCtx(config())->stopMotion();
+}
+
+
+
+
+
+
 // --- OrbitPole --------------------------------------------------------------
 //
 // Square orbit: 4 legs, all left (CCW) turns of 90°.

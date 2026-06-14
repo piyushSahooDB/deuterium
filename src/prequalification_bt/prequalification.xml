@@ -30,7 +30,8 @@ NOTE: If you change this file, you MUST RESTART the Behavior Tree node to reload
             <!-- 3. POLE MISSION -->
             <Fallback name="find_pole">
                 <IsObjectSeen object="POLE"/>
-                <Do360Turn success_when_seen="POLE"/>
+                <Exploration target_object="POLE" grace_duration="15.0"/>
+                
             </Fallback>
             
             <!-- NOTE: Change 'threshold' here to set the radius of the orbit approach -->
@@ -43,6 +44,7 @@ NOTE: If you change this file, you MUST RESTART the Behavior Tree node to reload
             <!-- 4. RETURN HOME (Reactive) -->
             <Fallback name="find_gate_home">
                 <IsObjectSeen object="GATE"/>
+                <Exploration target_object="GATE" grace_duration="15.0"/>
                 <Do360Turn success_when_seen="GATE"/>
             </Fallback>
 
@@ -72,6 +74,10 @@ NOTE: If you change this file, you MUST RESTART the Behavior Tree node to reload
             <input_port name="threshold" type="double">Target distance</input_port>
         </Action>
         <Action ID="DriveThruGate"/>
+        <Action ID="Exploration">
+            <input_port name="target_object" type="std::string">Object to search for: GATE or POLE</input_port>
+            <input_port name="grace_duration" type="double" default="15.0">Seconds to surge after a wrong detection before FAILURE</input_port>
+        </Action>
         <Action ID="OrbitPole">
             <input_port name="object" type="std::string">Object to orbit</input_port>
             <input_port name="staystill" type="double" default="0.0">Seconds to pause at threshold before orbiting</input_port>
