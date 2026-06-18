@@ -13,7 +13,7 @@ init = sl.InitParameters()
 
 init.camera_resolution = sl.RESOLUTION.HD2K
 init.camera_fps = 15
-
+init.input.set_from_serial_number()
 status = zed.open(init)
 
 if status != sl.ERROR_CODE.SUCCESS:

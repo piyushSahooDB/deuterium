@@ -290,6 +290,10 @@ public:
         BT::InputPort<double>("grace_duration", 15.0,
                               "Seconds to keep surging after the first non-target "
                               "detection before returning FAILURE"),
+        BT::InputPort<double>("max_duration", 30.0,
+                              "Max seconds to surge with NO detection at all before "
+                              "returning FAILURE. Ignored once the grace timer has "
+                              "started (i.e. once a non-target object has been seen)."),
     };
   }
 
@@ -305,11 +309,21 @@ private:
   double grace_duration_ = 15.0;
   std::optional<std::chrono::steady_clock::time_point> grace_start_;
 
+  double max_duration_ = 30.0;
+  std::chrono::steady_clock::time_point explore_start_;
+
   double graceElapsedSeconds() const {
     if (!grace_start_) return 0.0;
     using fsec = std::chrono::duration<double>;
     return std::chrono::duration_cast<fsec>(
                std::chrono::steady_clock::now() - *grace_start_)
+        .count();
+  }
+
+  double exploreElapsedSeconds() const {
+    using fsec = std::chrono::duration<double>;
+    return std::chrono::duration_cast<fsec>(
+               std::chrono::steady_clock::now() - explore_start_)
         .count();
   }
 };
