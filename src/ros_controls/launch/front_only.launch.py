@@ -56,11 +56,18 @@ def generate_launch_description():
         ),
     ])
 
-    combined_detections_hsv_pose = Node(
+    combined_detections = Node(
     	package='ros_controls',
-    	executable='combined_detections_hsv_pose',
+    	executable='combined_detections',
     )
+
+    only_full_model = Node(
+    	package='ros_controls',
+    	executable='full_model_detections',
+    )
+
     
     
 
-    return LaunchDescription([cam_front,combined_detections_hsv_pose])
+    # return LaunchDescription([cam_front,combined_detections])
+    return LaunchDescription([cam_front,only_full_model])

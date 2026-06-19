@@ -317,16 +317,18 @@ BT::NodeStatus Exploration::onStart() {
  
  
     grace_duration_ = getInput<double>("grace_duration").value_or(15.0);
+    max_duration_   = getInput<double>("max_duration").value_or(30.0);
     phase_          = Phase::SURGING;
     grace_start_    = std::nullopt;
+    explore_start_  = std::chrono::steady_clock::now();
  
     auto ctx = getCtx(config());
 
 
     RCLCPP_INFO(
         ctx->node->get_logger(),
-        "[Exploration] Starting — target='%s', surging forward, grace=%.1f s.",
-        target_object_.c_str(), grace_duration_
+        "[Exploration] Starting — target='%s', surging forward, grace=%.1f s, max=%.1f s.",
+        target_object_.c_str(), grace_duration_, max_duration_
     );
  
     ctx->publishToPico(0.0f, ctx->base_surge_speed, (float)ctx->target_depth, 0);
@@ -420,6 +422,23 @@ BT::NodeStatus Exploration::onRunning(){
 
 
 
+    }
+
+    // Max exploration timeout: only applies while still SURGING (no detection
+    // of any kind yet). Once the grace timer has started (phase_ == GRACE),
+    // this check is skipped entirely — the grace timer takes over from there.
+    if (phase_ == Phase::SURGING) {
+        double explore_elapsed = exploreElapsedSeconds();
+        if (explore_elapsed >= max_duration_) {
+            RCLCPP_WARN(
+                ctx->node->get_logger(),
+                "[Exploration] Max exploration time (%.1f s) exceeded with no "
+                "detections at all — FAILURE.",
+                max_duration_
+            );
+            ctx->stopMotion();
+            return BT::NodeStatus::FAILURE; 
+        }
     }
 
     if (phase_ == Phase::GRACE) {

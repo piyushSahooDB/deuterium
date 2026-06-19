@@ -36,7 +36,7 @@ setup(
         'console_scripts': [
             'teleop =ros_controls.teleop:main',
             'combined_detections=ros_controls.combined_detections:main',
-            'combined_detections_hsv_pose=ros_controls.combined_detection_hsv_pose:main',
+            'full_model_detections=ros_controls.full_model_detections:main',
             'dataset_collector_front =ros_controls.dataset_collector_front:main',
             'dataset_collector_down =ros_controls.dataset_collector_down:main',
             'imu_yaw_error=ros_controls.imu_yaw_error:main',
