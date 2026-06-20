@@ -118,10 +118,11 @@ class UnifiedDetectionNode(Node):
         det3d_array = Detection3DArray()
         det3d_array.header = img_msg.header
 
-        tracking_id = 0
         current_zed_objects = list(self.zed_objects)
 
-        # ── ZED SDK NATIVE YOLO DETECTIONS ───────────────────────────
+        # ── FIRST PASS: keep only the highest-confidence detection per class ──
+        # best_per_class[cls_name] = (conf, bbox, pos, zed_tracking_id)
+        best_per_class = {}
         for obj in current_zed_objects:
             if not obj.bounding_box_2d.corners:
                 continue
@@ -140,22 +141,24 @@ class UnifiedDetectionNode(Node):
                     f'Unknown label_id {cls_id} from ZED SDK — skipping object',
                     throttle_duration_sec=5.0)
                 continue
+
             # NOTE: obj.confidence from ZED SDK is the threshold-filtered value (0–100),
             # not necessarily a per-object YOLO score. Verify with:
             #   ros2 topic echo /zed2i_front/zed_node/obj_det/objects --field objects[0].confidence
             # If it always returns a fixed value, it is the configured threshold, not a score.
-            conf     = float(obj.confidence) / 100.0
+            conf = float(obj.confidence) / 100.0
+            pos  = (abs(float(obj.position[0])),
+                    float(obj.position[1]),
+                    float(obj.position[2]))
+            zed_tracking_id = int(obj.id) if hasattr(obj, 'id') else 0
 
-            pos      = (abs(float(obj.position[0])),
-                        float(obj.position[1]),
-                        float(obj.position[2]))
+            if cls_name not in best_per_class or conf > best_per_class[cls_name][0]:
+                best_per_class[cls_name] = (conf, bbox, pos, zed_tracking_id)
 
-            # position[0] is forward (X) in RIGHT_HANDED_Z_UP_X_FORWARD.
-            distance = pos[0]
-
-            # Use ZED SDK's persistent tracking ID instead of a per-frame counter,
-            # so downstream BT nodes can track objects across frames.
-            zed_tracking_id = int(obj.id) if hasattr(obj, 'id') else tracking_id
+        # ── SECOND PASS: draw, build messages, publish ────────────────
+        for cls_name, (conf, bbox, pos, zed_tracking_id) in best_per_class.items():
+            x1, y1, x2, y2 = bbox
+            distance = pos[0]  # forward axis in RIGHT_HANDED_Z_UP_X_FORWARD
 
             det_array.detections.append(
                 self.build_custom_det(img_msg.header, bbox, cls_name,
@@ -166,13 +169,12 @@ class UnifiedDetectionNode(Node):
             color = CLASS_COLORS.get(cls_name, (255, 0, 0))
             label = f'{cls_name} {conf:.2f} | {distance:.2f}m [id={zed_tracking_id}]'
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, label, (x1, max(y1-10, 15)),
+            cv2.putText(frame, label, (x1, max(y1 - 10, 15)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             self.get_logger().info(
                 f'[YOLO] {cls_name} id={zed_tracking_id} at {distance:.2f}m (conf: {conf:.2f})',
                 throttle_duration_sec=2.0)
-            tracking_id += 1
 
         if not det_array.detections:
             self.get_logger().info('No detections published this frame')
