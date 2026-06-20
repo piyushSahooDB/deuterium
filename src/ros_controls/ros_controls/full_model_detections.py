@@ -64,6 +64,8 @@ class UnifiedDetectionNode(Node):
         self.imu_pose = msg.orientation
 
     def objects_callback(self, msg):
+        # NOTE: Safe under single-threaded rclpy.spin(). If you switch to
+        # MultiThreadedExecutor, wrap this and the list() copy below with a threading.Lock.
         self.zed_objects = msg.objects
 
     def build_custom_det(self, header, bbox, class_id, confidence, pos, tracking_id):
@@ -132,28 +134,43 @@ class UnifiedDetectionNode(Node):
             bbox     = (x1, y1, x2, y2)
 
             cls_id   = obj.label_id
-            cls_name = YOLO_CLASS_MAP.get(cls_id, 'preq_gate')
+            cls_name = YOLO_CLASS_MAP.get(cls_id)
+            if cls_name is None:
+                self.get_logger().warn(
+                    f'Unknown label_id {cls_id} from ZED SDK — skipping object',
+                    throttle_duration_sec=5.0)
+                continue
+            # NOTE: obj.confidence from ZED SDK is the threshold-filtered value (0–100),
+            # not necessarily a per-object YOLO score. Verify with:
+            #   ros2 topic echo /zed2i_front/zed_node/obj_det/objects --field objects[0].confidence
+            # If it always returns a fixed value, it is the configured threshold, not a score.
             conf     = float(obj.confidence) / 100.0
 
-            pos      = (float(obj.position[0]),
+            pos      = (abs(float(obj.position[0])),
                         float(obj.position[1]),
                         float(obj.position[2]))
-            distance = float(obj.position[0])
+
+            # position[0] is forward (X) in RIGHT_HANDED_Z_UP_X_FORWARD.
+            distance = pos[0]
+
+            # Use ZED SDK's persistent tracking ID instead of a per-frame counter,
+            # so downstream BT nodes can track objects across frames.
+            zed_tracking_id = int(obj.id) if hasattr(obj, 'id') else tracking_id
 
             det_array.detections.append(
                 self.build_custom_det(img_msg.header, bbox, cls_name,
-                                      conf, pos, tracking_id))
+                                      conf, pos, zed_tracking_id))
             det3d_array.detections.append(
                 self.build_det3d(img_msg.header, bbox, cls_name, conf, pos))
 
             color = CLASS_COLORS.get(cls_name, (255, 0, 0))
-            label = f'{cls_name} {conf:.2f} | {distance:.2f}m'
+            label = f'{cls_name} {conf:.2f} | {distance:.2f}m [id={zed_tracking_id}]'
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(frame, label, (x1, max(y1-10, 15)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             self.get_logger().info(
-                f'[YOLO] {cls_name} detected at {distance:.2f}m (conf: {conf:.2f})',
+                f'[YOLO] {cls_name} id={zed_tracking_id} at {distance:.2f}m (conf: {conf:.2f})',
                 throttle_duration_sec=2.0)
             tracking_id += 1
 
