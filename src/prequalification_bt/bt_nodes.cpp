@@ -224,6 +224,10 @@ BT::NodeStatus StayStill::onStart() {
     auto duration_in = getInput<double>("duration");
     duration_ = duration_in ? duration_in.value() : duration_;
     start_time_ = std::chrono::steady_clock::now();
+
+    auto ctx = getCtx(config());
+    RCLCPP_INFO(ctx->node->get_logger(), "[StayStill] Holding position for %.1f seconds.", duration_);
+
     getCtx(config())->stopMotion();
     return BT::NodeStatus::RUNNING;
 }
@@ -412,36 +416,49 @@ BT::NodeStatus OrbitPole::onRunning() {
         return BT::NodeStatus::RUNNING;
     }
 
-    // --- All 5 legs complete ---
-    if (steps_completed_ >= 5) {
+    // --- FIX 1: Change exit guard from 5 to 6 to allow the final turn step to finish ---
+    if (steps_completed_ >= 6) {
         ctx->stopMotion();
-        RCLCPP_INFO(ctx->node->get_logger(), "[OrbitPole] Square orbit complete.");
+        RCLCPP_INFO(ctx->node->get_logger(), "[OrbitPole] Square orbit and recovery turn complete.");
         return BT::NodeStatus::SUCCESS;
     }
 
     double cur_yaw = ctx->getCurrentYaw();
 
-    // --- TURN: right 90° for leg 0 (go tangential), left 90° for legs 1-4 ---
+    // --- TURN PHASE ---
     if (phase_ == Phase::TURN) {
         if (!turn_target_set_) {
-            double turn_angle = (steps_completed_ == 0) ? -M_PI / 2.0 : M_PI / 2.0;
+            // Leg 0 and Leg 5 (6th step) turn right (-90 deg). Legs 1,2,3,4 turn left (+90 deg).
+            double turn_angle = ((steps_completed_ == 0) || (steps_completed_ == 5)) ? -M_PI / 2.0 : M_PI / 2.0;
             target_yaw_ = normalizeAngle(cur_yaw + turn_angle);
             turn_target_set_ = true;
+            
+            if (steps_completed_ == 5) {
+                RCLCPP_INFO(ctx->node->get_logger(), "[OrbitPole] Orbit legs done! Executing final recovery turn RIGHT 90 deg.");
+            } else {
+                RCLCPP_INFO(ctx->node->get_logger(), "[OrbitPole] Starting Turn for Step %d.", steps_completed_ + 1);
+            }
         }
 
         double yaw_err = normalizeAngle(target_yaw_ - cur_yaw);
         if (std::abs(yaw_err) < 0.08) {
+            // FIX 2: If this was the final adjustment turn, do NOT transition to surge!
+            if (steps_completed_ == 5) {
+                steps_completed_++; // Move to 6 so the top exit guard cleanly terminates the node
+                ctx->stopMotion();
+                return BT::NodeStatus::RUNNING;
+            }
+
             phase_ = Phase::SURGE;
             surge_start_ = ctx->node->get_clock()->now().seconds();
-            RCLCPP_INFO(ctx->node->get_logger(),
-                        "[OrbitPole] Turn complete, surging (leg %d/5).", steps_completed_ + 1);
+            RCLCPP_INFO(ctx->node->get_logger(), "[OrbitPole] Turn complete, surging (leg %d/5).", steps_completed_ + 1);
         } else {
             ctx->publishToPico((float)yaw_err, 0.0f, (float)ctx->target_depth, 0);
         }
         return BT::NodeStatus::RUNNING;
     }
 
-    // --- SURGE: X for leg 0 and leg 4, 2X for legs 1-3 ---
+    // --- SURGE PHASE ---
     if (phase_ == Phase::SURGE) {
         double duration = (steps_completed_ == 0 || steps_completed_ == 4)
             ? ctx->orbit_surge_duration
@@ -452,10 +469,9 @@ BT::NodeStatus OrbitPole::onRunning() {
             phase_ = Phase::TURN;
             turn_target_set_ = false;
             ctx->stopMotion();
-            RCLCPP_INFO(ctx->node->get_logger(),
-                        "[OrbitPole] Leg %d/5 complete.", steps_completed_);
+            RCLCPP_INFO(ctx->node->get_logger(), "[OrbitPole] Leg %d/5 complete.", steps_completed_);
         } else {
-            ctx->publishToPico(0.0f, ctx->base_surge_speed*3, (float)ctx->target_depth, 0);
+            ctx->publishToPico(0.0f, ctx->base_surge_speed * 3, (float)ctx->target_depth, 0);
         }
         return BT::NodeStatus::RUNNING;
     }
